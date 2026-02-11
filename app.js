@@ -1,0 +1,222 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
+import {
+  getFirestore, doc, onSnapshot, setDoc, runTransaction, serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js";
+import {
+  getAuth, signInAnonymously, onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js";
+
+/** 1) PASTE YOUR CONFIG HERE */
+const firebaseConfig = {
+  apiKey: "PASTE_ME",
+  authDomain: "PASTE_ME",
+  projectId: "PASTE_ME",
+  storageBucket: "PASTE_ME",
+  messagingSenderId: "PASTE_ME",
+  appId: "PASTE_ME",
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+// Global single shared board (no rooms)
+const gameRef = doc(db, "games", "global");
+
+const statusEl = document.getElementById("status");
+const boardEl = document.getElementById("board");
+const nameInput = document.getElementById("nameInput");
+const resetBtn = document.getElementById("resetBtn");
+const newBoardBtn = document.getElementById("newBoardBtn");
+
+// Persist a local display name
+const LS_NAME_KEY = "shared_bingo_name_v1";
+nameInput.value = localStorage.getItem(LS_NAME_KEY) || "";
+nameInput.addEventListener("input", () => {
+  localStorage.setItem(LS_NAME_KEY, nameInput.value.trim());
+});
+
+// A stable-ish random color per browser
+const LS_COLOR_KEY = "shared_bingo_color_v1";
+function randomColor() {
+  const hues = [10, 35, 60, 120, 170, 200, 230, 260, 290, 320];
+  const h = hues[Math.floor(Math.random() * hues.length)];
+  return `hsl(${h} 85% 70%)`;
+}
+let myColor = localStorage.getItem(LS_COLOR_KEY);
+if (!myColor) {
+  myColor = randomColor();
+  localStorage.setItem(LS_COLOR_KEY, myColor);
+}
+
+function getMyName() {
+  const v = (nameInput.value || "").trim();
+  return v || "Anon";
+}
+
+function defaultItems() {
+  // Replace these later with your real prompts.
+  // You can also edit Firestore doc manually.
+  const arr = [];
+  for (let i = 1; i <= 25; i++) arr.push(`Square ${i}`);
+  arr[12] = "FREE SPACE";
+  return arr;
+}
+
+function newRandomBoard() {
+  // Simple shuffle of a base list (keep FREE SPACE center)
+  const base = defaultItems().filter((_, i) => i !== 12);
+  // Fisher–Yates shuffle
+  for (let i = base.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [base[i], base[j]] = [base[j], base[i]];
+  }
+  const items = [];
+  let k = 0;
+  for (let i = 0; i < 25; i++) {
+    if (i === 12) items.push("FREE SPACE");
+    else items.push(base[k++]);
+  }
+  return items;
+}
+
+async function ensureDocExists() {
+  await setDoc(gameRef, {
+    items: defaultItems(),
+    marks: {}, // marks[cellIndex][uid] = { name, color, at }
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+}
+
+function render(state) {
+  const items = state?.items || defaultItems();
+  const marks = state?.marks || {}; // { "0": { uid: {...}, ... }, ... }
+
+  boardEl.innerHTML = "";
+  for (let idx = 0; idx < 25; idx++) {
+    const cell = document.createElement("div");
+    cell.className = "cell";
+    cell.dataset.idx = String(idx);
+
+    const head = document.createElement("div");
+    head.className = "cellIndex";
+    head.textContent = `#${idx + 1}`;
+
+    const text = document.createElement("div");
+    text.className = "cellText";
+    text.textContent = items[idx] ?? "";
+
+    const marksWrap = document.createElement("div");
+    marksWrap.className = "marks";
+
+    const cellMarks = marks[String(idx)] || {};
+    const entries = Object.values(cellMarks);
+
+    // sort by time if available
+    entries.sort((a, b) => (a?.at || 0) - (b?.at || 0));
+
+    for (const m of entries) {
+      const chip = document.createElement("div");
+      chip.className = "chip";
+      chip.textContent = m?.name || "Anon";
+      chip.style.background = m?.color || "#ddd";
+      marksWrap.appendChild(chip);
+    }
+
+    cell.appendChild(head);
+    cell.appendChild(text);
+    cell.appendChild(marksWrap);
+
+    cell.addEventListener("click", () => toggleMark(idx));
+    boardEl.appendChild(cell);
+  }
+}
+
+async function toggleMark(cellIndex) {
+  const user = auth.currentUser;
+  if (!user) return;
+
+  const uid = user.uid;
+  const name = getMyName();
+
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(gameRef);
+    if (!snap.exists()) {
+      tx.set(gameRef, {
+        items: defaultItems(),
+        marks: {},
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+      return;
+    }
+
+    const data = snap.data();
+    const marks = data.marks || {};
+    const key = String(cellIndex);
+    const cellMarks = marks[key] || {};
+
+    if (cellMarks[uid]) {
+      // remove your mark
+      delete cellMarks[uid];
+    } else {
+      // add your mark
+      cellMarks[uid] = { name, color: myColor, at: Date.now() };
+    }
+
+    // clean empty object
+    if (Object.keys(cellMarks).length === 0) delete marks[key];
+    else marks[key] = cellMarks;
+
+    tx.update(gameRef, {
+      marks,
+      updatedAt: serverTimestamp(),
+    });
+  });
+}
+
+resetBtn.addEventListener("click", async () => {
+  const user = auth.currentUser;
+  if (!user) return;
+
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(gameRef);
+    if (!snap.exists()) return;
+    tx.update(gameRef, { marks: {}, updatedAt: serverTimestamp() });
+  });
+});
+
+newBoardBtn.addEventListener("click", async () => {
+  const user = auth.currentUser;
+  if (!user) return;
+
+  const items = newRandomBoard();
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(gameRef);
+    if (!snap.exists()) {
+      tx.set(gameRef, { items, marks: {}, updatedAt: serverTimestamp() });
+      return;
+    }
+    tx.update(gameRef, { items, marks: {}, updatedAt: serverTimestamp() });
+  });
+});
+
+// Boot
+statusEl.textContent = "Signing in…";
+signInAnonymously(auth).catch((e) => {
+  statusEl.textContent = `Auth error: ${e?.message || e}`;
+});
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) return;
+  statusEl.textContent = "Connected. Loading…";
+
+  await ensureDocExists();
+
+  onSnapshot(gameRef, (snap) => {
+    const data = snap.data();
+    statusEl.textContent = `Live • players mark squares in real time`;
+    render(data);
+  }, (err) => {
+    statusEl.textContent = `Snapshot error: ${err?.message || err}`;
+  });
+});
