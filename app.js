@@ -6,15 +6,16 @@ import {
   getAuth, signInAnonymously, onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js";
 
-/** 1) PASTE YOUR CONFIG HERE */
-const firebaseConfig = {
-  apiKey: "PASTE_ME",
-  authDomain: "PASTE_ME",
-  projectId: "PASTE_ME",
-  storageBucket: "PASTE_ME",
-  messagingSenderId: "PASTE_ME",
-  appId: "PASTE_ME",
-};
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAHBcKgYhk6PX2UzgwanFHyMG89IYdgvnQ",
+    authDomain: "disneybingo-37c78.firebaseapp.com",
+    projectId: "disneybingo-37c78",
+    storageBucket: "disneybingo-37c78.firebasestorage.app",
+    messagingSenderId: "980665975830",
+    appId: "1:980665975830:web:e40c4471a7795c43a1e137",
+    measurementId: "G-7XRSH8VJR9"
+  };
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
