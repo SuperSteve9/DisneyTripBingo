@@ -128,15 +128,29 @@ function newRandomBoard() {
 
 /** ===== Ensure Firestore doc exists ===== */
 async function ensureDocExists() {
-  await setDoc(
-    gameRef,
-    {
-      items: defaultItems(),
-      marks: {}, // marks[cellIndex][uid] = { name, color, at }
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(gameRef);
+
+    // Only initialize once (when missing)
+    if (!snap.exists()) {
+      tx.set(gameRef, {
+        items: defaultItems(),
+        marks: {},
+        updatedAt: serverTimestamp(),
+      });
+      return;
+    }
+
+    // Optional: repair if the doc exists but items are missing/bad
+    const data = snap.data();
+    const itemsOk = Array.isArray(data.items) && data.items.length === 25;
+    if (!itemsOk) {
+      tx.update(gameRef, {
+        items: defaultItems(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+  });
 }
 
 /** ===== Render ===== */
