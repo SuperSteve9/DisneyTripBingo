@@ -6,6 +6,7 @@
   <title>Shared Bingo</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
+
 <body>
   <header class="topbar">
     <div>
@@ -15,23 +16,23 @@
 
     <div class="spacer"></div>
 
-<label class="field">
-  <span>Name</span>
-  <input id="nameInput" maxlength="16" placeholder="Stan" />
-</label>
+    <label class="field">
+      <span>Name</span>
+      <input id="nameInput" maxlength="16" placeholder="Stan" />
+    </label>
 
-<label class="field">
-  <span>Host Key</span>
-  <input id="hostKeyInput" maxlength="32" placeholder="(leave blank)" />
-</label>
+    <label class="field">
+      <span>Host Key</span>
+      <input id="hostKeyInput" maxlength="32" placeholder="(leave blank)" />
+    </label>
 
-<button id="resetBtn" class="btn danger" title="Clears all marks for everyone">
-  Reset marks
-</button>
-<button id="newBoardBtn" class="btn" title="Generates a new shared board for everyone">
-  New board
-</button>
+    <button id="resetBtn" class="btn danger" title="Clears all marks for everyone" disabled>
+      Reset marks
+    </button>
 
+    <button id="newBoardBtn" class="btn" title="Generates a new shared board for everyone" disabled>
+      New board
+    </button>
   </header>
 
   <main>
